@@ -9,6 +9,9 @@ module.exports = class AutoNoteLinkerPlugin extends Plugin {
       name: "Auto Link Notes",
       callback: () => this.linkAllNotes(),
     });
+
+    // Run automatically once the vault layout is ready
+    this.app.workspace.onLayoutReady(() => this.linkAllNotes());
   }
 
   onunload() {

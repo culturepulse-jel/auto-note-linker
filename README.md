@@ -63,6 +63,6 @@ I started learning [[Python]] last month. Now I'm exploring [[Machine Learning]]
 
 ## Things to know
 
+- The plugin runs automatically when Obsidian starts, linking all notes in your vault. You can also trigger it manually at any time via the command palette.
 - The command modifies files in place. If you want to undo changes, use `Ctrl+Z` in any affected note or revert via git.
-- It only runs when you manually trigger the command — it does not run automatically on startup or on file save.
 - Titles with special characters (parentheses, periods, etc.) are handled safely.
