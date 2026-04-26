@@ -51,9 +51,32 @@ module.exports = class AutoNoteLinkerPlugin extends Plugin {
   }
 
   addLinksToNote(content, titles, currentFileName) {
-    // Split content into protected and unprotected segments.
-    // Protected segments (frontmatter, code blocks, inline code, existing
-    // wikilinks, existing markdown links, headings) are never modified.
+    const filteredTitles = titles.filter(
+      (t) => t !== currentFileName && t.length > 0
+    );
+
+    // Process each title individually, longest first (already sorted).
+    // After each pass, re-segment so newly created [[links]] are protected
+    // from shorter titles (e.g. "CulturePulse S.R.O." before "CulturePulse").
+    for (const title of filteredTitles) {
+      const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      // Use \b only on sides where the title starts/ends with a word char.
+      // Titles like "S.R.O." end with "." (non-word), so \b would fail there.
+      const isWordStart = /^\w/.test(title);
+      const isWordEnd = /\w$/.test(title);
+      const prefix = isWordStart ? "\\b" : "";
+      const suffix = isWordEnd ? "\\b" : "";
+
+      const titlePattern = new RegExp(`${prefix}${escaped}${suffix}`, "gi");
+
+      content = this.replaceInEditable(content, titlePattern, (match) => `[[${match}]]`);
+    }
+
+    return content;
+  }
+
+  replaceInEditable(content, pattern, replacer) {
     const protectedPattern =
       /^---\r?\n[\s\S]*?\r?\n---|\r?\n---\r?\n[\s\S]*?\r?\n---|```[\s\S]*?```|`[^`]+`|\[\[.*?\]\]|\[.*?\]\(.*?\)|^#{1,6}\s+.+$/gm;
 
@@ -71,22 +94,9 @@ module.exports = class AutoNoteLinkerPlugin extends Plugin {
       segments.push({ text: content.slice(lastIndex), editable: true });
     }
 
-    // Build one combined regex for all titles (longest-first is already sorted)
-    const escapedTitles = titles
-      .filter((t) => t !== currentFileName && t.length > 0)
-      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-
-    if (escapedTitles.length === 0) return content;
-
-    const titlePattern = new RegExp(
-      `\\b(${escapedTitles.join("|")})\\b`,
-      "gi"
-    );
-
-    // Replace in editable segments only
     for (const segment of segments) {
       if (!segment.editable) continue;
-      segment.text = segment.text.replace(titlePattern, (match) => `[[${match}]]`);
+      segment.text = segment.text.replace(pattern, replacer);
     }
 
     return segments.map((s) => s.text).join("");
