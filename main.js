@@ -51,8 +51,9 @@ module.exports = class AutoNoteLinkerPlugin extends Plugin {
   }
 
   addLinksToNote(content, titles, currentFileName) {
+    const currentLower = currentFileName.toLowerCase();
     const filteredTitles = titles.filter(
-      (t) => t !== currentFileName && t.length > 0
+      (t) => t.toLowerCase() !== currentLower && t.length > 0
     );
 
     // Process each title individually, longest first (already sorted).
@@ -77,8 +78,10 @@ module.exports = class AutoNoteLinkerPlugin extends Plugin {
   }
 
   replaceInEditable(content, pattern, replacer) {
+    // Protected: frontmatter, code blocks, inline code, existing wikilinks,
+    // existing markdown links. Headings are NOT protected — links can be added there.
     const protectedPattern =
-      /^---\r?\n[\s\S]*?\r?\n---|\r?\n---\r?\n[\s\S]*?\r?\n---|```[\s\S]*?```|`[^`]+`|\[\[.*?\]\]|\[.*?\]\(.*?\)|^#{1,6}\s+.+$/gm;
+      /^---\r?\n[\s\S]*?\r?\n---|\r?\n---\r?\n[\s\S]*?\r?\n---|```[\s\S]*?```|`[^`]+`|\[\[.*?\]\]|\[.*?\]\(.*?\)/gm;
 
     const segments = [];
     let lastIndex = 0;
