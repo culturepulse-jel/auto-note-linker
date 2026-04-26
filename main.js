@@ -1,78 +1,91 @@
+const { Plugin, Notice } = require("obsidian");
+
 module.exports = class AutoNoteLinkerPlugin extends Plugin {
   async onload() {
     console.log("Auto Note Linker plugin loaded!");
 
-    // Automatically link notes when Obsidian starts
     this.addCommand({
       id: "auto-link-notes",
       name: "Auto Link Notes",
       callback: () => this.linkAllNotes(),
     });
-
-    // Optionally run this automatically on start
-    this.linkAllNotes();
   }
 
   onunload() {
     console.log("Auto Note Linker plugin unloaded!");
   }
 
-  // Function to scan all markdown files and link titles
   async linkAllNotes() {
     try {
-      const markdownFiles = this.getMarkdownFiles();
-      const noteTitles = this.extractNoteTitles(markdownFiles);
+      const markdownFiles = this.app.vault.getMarkdownFiles();
+      const noteTitles = markdownFiles.map((file) => file.basename);
 
-      // Sort note titles by length in descending order (longest first)
+      // Sort by length descending so longer titles match first
       noteTitles.sort((a, b) => b.length - a.length);
+
+      let totalUpdated = 0;
 
       for (const file of markdownFiles) {
         const content = await this.app.vault.read(file);
-        let updatedContent = this.addLinksToNote(content, noteTitles);
+        const updatedContent = this.addLinksToNote(
+          content,
+          noteTitles,
+          file.basename
+        );
 
         if (content !== updatedContent) {
-          // Only write back if there are changes to avoid unnecessary updates
           await this.app.vault.modify(file, updatedContent);
+          totalUpdated++;
           console.log(`Updated links in ${file.path}`);
-        } else {
-          console.log(`No changes needed for ${file.path}`);
         }
       }
+
+      new Notice(`Auto Note Linker: updated ${totalUpdated} file(s).`);
     } catch (error) {
       console.error("Error linking notes:", error);
+      new Notice("Auto Note Linker: error — check console for details.");
     }
   }
 
-  // Get a list of all markdown files in the vault
-  getMarkdownFiles() {
-    const markdownFiles = [];
-    const files = this.app.vault.getFiles();
-    for (const file of files) {
-      if (file.extension === "md") {
-        markdownFiles.push(file);
+  addLinksToNote(content, titles, currentFileName) {
+    // Split content into protected and unprotected segments.
+    // Protected segments (frontmatter, code blocks, inline code, existing
+    // wikilinks, existing markdown links, headings) are never modified.
+    const protectedPattern =
+      /^---\r?\n[\s\S]*?\r?\n---|\r?\n---\r?\n[\s\S]*?\r?\n---|```[\s\S]*?```|`[^`]+`|\[\[.*?\]\]|\[.*?\]\(.*?\)|^#{1,6}\s+.+$/gm;
+
+    const segments = [];
+    let lastIndex = 0;
+
+    for (const match of content.matchAll(protectedPattern)) {
+      if (match.index > lastIndex) {
+        segments.push({ text: content.slice(lastIndex, match.index), editable: true });
       }
+      segments.push({ text: match[0], editable: false });
+      lastIndex = match.index + match[0].length;
     }
-    return markdownFiles;
-  }
+    if (lastIndex < content.length) {
+      segments.push({ text: content.slice(lastIndex), editable: true });
+    }
 
-  // Extract note titles from markdown filenames (without the .md extension)
-  extractNoteTitles(markdownFiles) {
-    return markdownFiles.map((file) => file.basename);
-  }
+    // Build one combined regex for all titles (longest-first is already sorted)
+    const escapedTitles = titles
+      .filter((t) => t !== currentFileName && t.length > 0)
+      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
-  // Add links to notes where title matches a word or phrase in the content
-  addLinksToNote(content, titles) {
-    titles.forEach((title) => {
-      // Regex to match the exact title as a word or phrase
-      const pattern = new RegExp(`\\b(${title})\\b`, "g");
-      const replacement = `[[${title}]]`;
+    if (escapedTitles.length === 0) return content;
 
-      // Only replace if the word or phrase is not already inside brackets
-      content = content.replace(
-        new RegExp(`(?<!\\[\\[)${pattern.source}(?!\\]\\])`, "g"),
-        replacement
-      );
-    });
-    return content;
+    const titlePattern = new RegExp(
+      `\\b(${escapedTitles.join("|")})\\b`,
+      "gi"
+    );
+
+    // Replace in editable segments only
+    for (const segment of segments) {
+      if (!segment.editable) continue;
+      segment.text = segment.text.replace(titlePattern, (match) => `[[${match}]]`);
+    }
+
+    return segments.map((s) => s.text).join("");
   }
 };
